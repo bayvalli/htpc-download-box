@@ -6,108 +6,178 @@ services:
     cap_add:
       - net_admin # required to modify network interfaces
     restart: unless-stopped
+    networks: 
+      vpnbr:
+        ipv4_address: 172.24.0.2 # local address for transmission and vpn
     volumes:
       - /dev/net:/dev/net:z # tun device
-      - ${ROOT}/config/vpn:/vpn # OpenVPN configuration
+      - ${ROOT}/.config/vpn:/vpn # OpenVPN configuration
     security_opt:
       - label:disable
     ports:
-      - 8112:8112 # port for deluge web UI to be reachable from local network
-    command: '-f "" -r 192.168.1.0/24' # enable firewall and route local network traffic
+      - 9091:9091 # port for transmission web UI
+    command: '-f "" -r 192.168.1.0/24 -c "PASSPHRASE_FOR_VPN_CERT"' # enable firewall and route local network traffic
 
-  deluge:
-    container_name: deluge
-    image: linuxserver/deluge:latest
+  transmission:
+    container_name: transmission
+    image: lscr.io/linuxserver/transmission:latest
     restart: unless-stopped
-    network_mode: service:vpn # run on the vpn network
+    network_mode: service:vpn
+    depends_on:
+      - "vpn"
     environment:
       - PUID=${PUID} # default user id, defined in .env
       - PGID=${PGID} # default group id, defined in .env
       - TZ=${TZ} # timezone, defined in .env
     volumes:
-      - ${ROOT}/downloads:/downloads # downloads folder
-      - ${ROOT}/config/deluge:/config # config files
-
-  jackett:
-    container_name: jackett
-    image: linuxserver/jackett:latest
-    restart: unless-stopped
-    network_mode: host
-    environment:
-      - PUID=${PUID} # default user id, defined in .env
-      - PGID=${PGID} # default group id, defined in .env
-      - TZ=${TZ} # timezone, defined in .env
-    volumes:
-      - /etc/localtime:/etc/localtime:ro
-      - ${ROOT}/downloads/torrent-blackhole:/downloads # place where to put .torrent files for manual download
-      - ${ROOT}/config/jackett:/config # config files
-
-  nzbget:
-    container_name: nzbget
-    image: linuxserver/nzbget:latest
-    restart: unless-stopped
-    network_mode: host
-    environment:
-      - PUID=${PUID} # default user id, defined in .env
-      - PGID=${PGID} # default group id, defined in .env
-      - TZ=${TZ} # timezone, defined in .env
-    volumes:
-      - ${ROOT}/downloads:/downloads # download folder
-      - ${ROOT}/config/nzbget:/config # config files
+      - ${ROOT}/Downloads:/downloads # downloads folder
+      - ${ROOT}/.config/transmission:/config # config files
+      - ${ROOT}/.config/transmission/watch:/watch # watch files
 
   sonarr:
     container_name: sonarr
     image: linuxserver/sonarr:latest
     restart: unless-stopped
-    network_mode: host
+    networks: 
+      vpnbr:
+        ipv4_address: 172.24.0.3
     environment:
       - PUID=${PUID} # default user id, defined in .env
       - PGID=${PGID} # default group id, defined in .env
       - TZ=${TZ} # timezone, defined in .env
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - ${ROOT}/config/sonarr:/config # config files
-      - ${ROOT}/complete/tv:/tv # tv shows folder
-      - ${ROOT}/downloads:/downloads # download folder
-
+      - ${ROOT}/.config/sonarr:/config # config files
+      - ${ROOT}/Videos/TV:/tv # tv shows folder
+      - ${ROOT}/Downloads:/downloads # download folder
+    ports:
+      - "8989:8989" #sonarr
+    
   radarr:
     container_name: radarr
     image: linuxserver/radarr:latest
     restart: unless-stopped
-    network_mode: host
+    networks: 
+      vpnbr:
+        ipv4_address: 172.24.0.4
     environment:
       - PUID=${PUID} # default user id, defined in .env
       - PGID=${PGID} # default group id, defined in .env
       - TZ=${TZ} # timezone, defined in .env
     volumes:
       - /etc/localtime:/etc/localtime:ro
-      - ${ROOT}/config/radarr:/config # config files
-      - ${ROOT}/complete/movies:/movies # movies folder
-      - ${ROOT}/downloads:/downloads # download folder
+      - ${ROOT}/.config/radarr:/config # config files
+      - ${ROOT}/Videos/Movies:/movies # movies folder
+      - ${ROOT}/Downloads:/downloads # download folder
+    ports:
+      - "7878:7878" #radarr
 
-  plex-server:
-    container_name: plex-server
-    image: plexinc/pms-docker:latest
+  jackett:
+    container_name: jackett
+    image: linuxserver/jackett:latest
     restart: unless-stopped
+    networks: 
+      vpnbr:
+        ipv4_address: 172.24.0.5
     environment:
+      - PUID=${PUID} # default user id, defined in .env
+      - PGID=${PGID} # default group id, defined in .env
       - TZ=${TZ} # timezone, defined in .env
-    network_mode: host
     volumes:
-      - ${ROOT}/config/plex/db:/config # plex database
-      - ${ROOT}/config/plex/transcode:/transcode # temp transcoded files
-      - ${ROOT}/complete:/data # media library
-
+      - /etc/localtime:/etc/localtime:ro
+      - ${ROOT}/Downloads/Blackhole:/downloads # place where to put .torrent files for manual download
+      - ${ROOT}/.config/jackett:/config # config files
+    ports:
+      - "9117:9117" #jackett
+      
   bazarr:
     container_name: bazarr
     image: linuxserver/bazarr
     restart: unless-stopped
-    network_mode: host
+    networks: 
+      vpnbr:
+        ipv4_address: 172.24.0.6
     environment:
       - PUID=${PUID} # default user id, defined in .env
       - PGID=${PGID} # default group id, defined in .env
       - TZ=${TZ} # timezone, defined in .env
       - UMASK_SET=022 #optional
     volumes:
-      - ${ROOT}/config/bazarr:/config # config files
-      - ${ROOT}/complete/movies:/movies # movies folder
-      - ${ROOT}/complete/tv:/tv # tv shows folder
+      - ${ROOT}/.config/bazarr:/config # config files
+      - ${ROOT}/Videos/Movies:/movies # movies folder
+      - ${ROOT}/Videos/TV:/tv # tv shows folder
+    ports:
+      - "6767:6767" #bazarr
+
+networks:  # local bridge network for the containers
+  vpnbr:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.24.0.0/16
+          gateway: 172.24.0.1
+
+# ADDITION
+
+  # plex-server:
+  #   container_name: plex-server
+  #   image: plexinc/pms-docker:latest
+  #   restart: unless-stopped
+  #   network_mode: bridge
+  #   environment:
+  #     - TZ=${TZ} # timezone, defined in .env
+  #   volumes:
+  #     - ${ROOT}/.config/plex/db:/config # plex database
+  #     - ${ROOT}/.config/plex/transcode:/transcode # temp transcoded files
+  #     - ${ROOT}/Videos:/data # media library
+  #   ports:
+  #     - 32400:32400
+
+  # letsencrypt:
+  #       image: linuxserver/letsencrypt
+  #       container_name: letsencrypt
+  #       ports:
+  #           - 443:443
+  #           # Only for validation, redirect all http traffic to https in config
+  #           - 80:80
+  #       volumes:
+  #           - ${ROOT}/config/letsencrypt/config:/config
+  #       restart: always
+  #       depends_on:
+  #           - nzbget
+  #           - sonarr
+  #           - radarr
+  #       environment:
+  #           - TZ=${TZ}
+  #           - EMAIL=youremail@gmail.com
+  #           - URL=your.domain
+  #           - SUBDOMAINS=services
+  #           - ONLY_SUBDOMAINS=true
+  #           # tns validation doesn't work
+  #           - VALIDATION=http
+
+  # deluge:
+  #   container_name: deluge
+  #   image: linuxserver/deluge:latest
+  #   restart: unless-stopped
+  #   network_mode: service:vpn # run on the vpn network
+  #   environment:
+  #     - PUID=${PUID} # default user id, defined in .env
+  #     - PGID=${PGID} # default group id, defined in .env
+  #     - TZ=${TZ} # timezone, defined in .env
+  #   volumes:
+  #     - ${ROOT}/downloads:/downloads # downloads folder
+  #     - ${ROOT}/config/deluge:/config # config files
+
+  # nzbget:
+  #   container_name: nzbget
+  #   image: linuxserver/nzbget:latest
+  #   restart: unless-stopped
+  #   network_mode: host
+  #   environment:
+  #     - PUID=${PUID} # default user id, defined in .env
+  #     - PGID=${PGID} # default group id, defined in .env
+  #     - TZ=${TZ} # timezone, defined in .env
+  #   volumes:
+  #     - ${ROOT}/downloads:/downloads # download folder
+  #     - ${ROOT}/.config/nzbget:/config # config files
