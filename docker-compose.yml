@@ -15,12 +15,14 @@ services:
     security_opt:
       - label:disable
     ports:
-      - 9091:9091 # port for transmission web UI
+      - 8080:8080
+      - 6881:6881/tcp
+      - 6881:6881/udp # ports for qbittorent
     command: '-f "" -r 192.168.1.0/24 -c "PASSPHRASE_FOR_VPN_CERT"' # enable firewall and route local network traffic
 
-  transmission:
-    container_name: transmission
-    image: lscr.io/linuxserver/transmission:latest
+  qbittorrent:
+    container_name: qbittorrent
+    image: emmercm/qbittorrent:latest
     restart: unless-stopped
     network_mode: service:vpn
     depends_on:
@@ -31,8 +33,9 @@ services:
       - TZ=${TZ} # timezone, defined in .env
     volumes:
       - ${ROOT}/Downloads:/downloads # downloads folder
-      - ${ROOT}/.config/transmission:/config # config files
-      - ${ROOT}/.config/transmission/watch:/watch # watch files
+      - ${ROOT}/Downloads/incomplete:/downloads/incomplete # incomplete folder
+      - ${ROOT}/.config/qbittorrent/data:/config/qbittorrent/data # data files
+      - ${ROOT}/.config/qbittorrent/config:/config/qbittorrent # config files
 
   sonarr:
     container_name: sonarr
@@ -118,6 +121,24 @@ networks:  # local bridge network for the containers
           gateway: 172.24.0.1
 
 # ADDITION
+
+  #- 9091:9091 # port for transmission web UI
+  
+  # transmission:
+  #   container_name: transmission
+  #   image: lscr.io/linuxserver/transmission:latest
+  #   restart: unless-stopped
+  #   network_mode: service:vpn
+  #   depends_on:
+  #     - "vpn"
+  #   environment:
+  #     - PUID=${PUID} # default user id, defined in .env
+  #     - PGID=${PGID} # default group id, defined in .env
+  #     - TZ=${TZ} # timezone, defined in .env
+  #   volumes:
+  #     - ${ROOT}/Downloads:/downloads # downloads folder
+  #     - ${ROOT}/.config/transmission:/config # config files
+  #     - ${ROOT}/.config/transmission/watch:/watch # watch files
 
   # plex-server:
   #   container_name: plex-server
